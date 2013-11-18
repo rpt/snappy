@@ -1,14 +1,12 @@
-all: snappy eunit
+.PHONY: compile test clean
 
-snappy:
-	./rebar compile
+compile:
+	@ rebar compile
 
-eunit:
-	./rebar eunit
-
-check: eunit
+test:
+	@ rebar eunit
 
 clean:
-	./rebar clean
-	rm -fr priv ebin
+	@ rebar clean
+	@ rm -rf priv ebin
 
