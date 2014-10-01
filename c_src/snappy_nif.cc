@@ -36,6 +36,14 @@
 
 #define SC_PTR(c) reinterpret_cast<char *>(c)
 
+#if ((ERL_NIF_MAJOR_VERSION == 2) && (ERL_NIF_MINOR_VERSION >= 7)) || \
+    (ERL_NIF_MAJOR_VERSION > 2)
+/* bypass bug in 17.3 release */
+#define DIRTY_SCHEDULERS_VERSION 1
+#else
+#define DIRTY_SCHEDULERS_VERSION 0
+#endif
+
 class SnappyNifSink : public snappy::Sink
 {
     public:
@@ -77,7 +85,7 @@ SnappyNifSink::Append(const char *data, size_t n)
 }
 
 char*
-SnappyNifSink::GetAppendBuffer(size_t len, char* scratch)
+SnappyNifSink::GetAppendBuffer(size_t len, char* /* scratch */)
 {
     size_t sz;
     
@@ -135,7 +143,7 @@ BEGIN_C
 
 
 ERL_NIF_TERM
-snappy_compress(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+snappy_compress(ErlNifEnv* env, int /* argc */, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary input;
 
@@ -157,7 +165,7 @@ snappy_compress(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 
 ERL_NIF_TERM
-snappy_decompress(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+snappy_decompress(ErlNifEnv* env, int /* argc */, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary bin;
     ErlNifBinary ret;
@@ -189,7 +197,7 @@ snappy_decompress(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 
 ERL_NIF_TERM
-snappy_uncompressed_length(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+snappy_uncompressed_length(ErlNifEnv* env, int /* argc */, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary bin;
     size_t len;
@@ -210,7 +218,7 @@ snappy_uncompressed_length(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 
 ERL_NIF_TERM
-snappy_is_valid(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+snappy_is_valid(ErlNifEnv* env, int /* argc */, const ERL_NIF_TERM argv[])
 {
     ErlNifBinary bin;
 
@@ -231,34 +239,65 @@ snappy_is_valid(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 
 int
-on_load(ErlNifEnv* env, void** priv, ERL_NIF_TERM info)
+on_load(ErlNifEnv* /* env */, void** /* priv */, ERL_NIF_TERM /* info */)
 {
     return 0;
 }
 
 
 int
-on_reload(ErlNifEnv* env, void** priv, ERL_NIF_TERM info)
+on_reload(ErlNifEnv* /* env */, void** /* priv */, ERL_NIF_TERM /* info */)
 {
     return 0;
 }
 
 
 int
-on_upgrade(ErlNifEnv* env, void** priv, void** old_priv, ERL_NIF_TERM info)
+on_upgrade(ErlNifEnv* /* env */, void** /* priv */, void** /* old_priv */, ERL_NIF_TERM /* info */)
 {
     return 0;
 }
 
 
 static ErlNifFunc nif_functions[] = {
+#if DIRTY_SCHEDULERS_VERSION == 0
     {"compress", 1, snappy_compress},
     {"decompress", 1, snappy_decompress},
     {"uncompressed_length", 1, snappy_uncompressed_length},
     {"is_valid", 1, snappy_is_valid}
+#else
+    {"compress", 1, snappy_compress, 0},
+    {"decompress", 1, snappy_decompress, 0},
+    {"uncompressed_length", 1, snappy_uncompressed_length, 0},
+    {"is_valid", 1, snappy_is_valid, 0}
+#endif
 };
 
 
+#if DIRTY_SCHEDULERS_VERSION == 1
+#undef ERL_NIF_INIT
+#define ERL_NIF_INIT(NAME, FUNCS, LOAD, RELOAD, UPGRADE, UNLOAD) \
+    ERL_NIF_INIT_PROLOGUE                           \
+    ERL_NIF_INIT_GLOB                               \
+    ERL_NIF_INIT_DECL(NAME);                        \
+    ERL_NIF_INIT_DECL(NAME)                         \
+    {                                               \
+        static ErlNifEntry entry =                  \
+        {                                           \
+        ERL_NIF_MAJOR_VERSION,                      \
+        ERL_NIF_MINOR_VERSION,                      \
+        #NAME,                                      \
+        sizeof(FUNCS) / sizeof(*FUNCS),             \
+        FUNCS,                                      \
+        LOAD, RELOAD, UPGRADE, UNLOAD,              \
+        ERL_NIF_VM_VARIANT,                         \
+        0                                           \
+        };                                          \
+        ERL_NIF_INIT_BODY;                          \
+        return &entry;                              \
+    }                                               \
+    ERL_NIF_INIT_EPILOGUE
+#endif
 ERL_NIF_INIT(snappy, nif_functions, &on_load, &on_reload, &on_upgrade, NULL);
 
 
